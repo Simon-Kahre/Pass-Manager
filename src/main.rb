@@ -23,6 +23,7 @@ def startScreen
                 password = gets
                 if password == masterPassword
                     puts "correct"
+                    viewPasswords
                     break
                 else
                     puts "incorrect"
@@ -56,6 +57,8 @@ def startScreen
         settings.close
 
         newFile.close
+
+        viewPasswords
     end
 end
 
@@ -66,4 +69,75 @@ def tryTimerReset(file)
     file.puts(endTime)
     file.close
 end
+
+def viewPasswords()
+    storedPasswords = File.readlines("pass")
+    storedPasswords.push("a aa A")
+
+    passwords = {}
+
+    storedPasswords.each do |password|
+        values = password.split
+
+        passwords[values[0]] = values[1..2]
+    end
+
+    while true
+        puts("Current sites with stored passwords:")
+        passwords.each do |key, value|
+            puts(key + " " +  value[0] + " " + value[1])
+        end
+
+        puts("Which one would you like to access? 'exit' to exit. 'add' to add a new password.")
+        choice = gets.chomp
+        puts(`clear`)
+
+        if choice == "add"
+            puts("Enter site name:")
+            name = gets.chomp
+            puts("Enter email:")
+            mail = gets.chomp
+            puts("Enter password:")
+            password = gets.chomp
+
+            passwords[name] = [mail, password]
+        elsif passwords.has_key?(choice)
+            puts(choice + " uses:")
+            puts("Email: " + passwords[choice][0])
+            puts("Password: " + passwords[choice][1])
+            puts
+            puts("Would you like to change anyting? Type 'yes' to change")
+
+            newChoice = gets.chomp
+
+            if newChoice == "yes"
+                puts("What would you like to change? (email/password/delete)")
+                anotherChoice = gets.chomp
+
+                if anotherChoice == "email"
+                    puts("Please enter the new email:")
+                    newMail = gets.chomp
+                    passwords[choice][0] = newMail
+
+                elsif anotherChoice == "password"
+                    puts("Please enter the new password:")
+                    newPass = gets.chomp
+                    passwords[choice][1] = newPass
+
+                elsif anotherChoice == "delete"
+                    puts("Are you sure about deleting this password? Type 'DELETE' to delete")
+                    confirmation = gets.chomp
+
+                    if confirmation == "DELETE"
+                        passwords.delete(choice)
+                    end
+
+                end
+            end
+        end
+
+        break if choice == "exit"
+    end
+end
+
 startScreen
