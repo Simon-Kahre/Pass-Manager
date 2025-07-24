@@ -85,6 +85,8 @@ def tryTimerReset(file)
     endTime = Time.now + 20*60
 
     file.rewind
+    file.gets
+    file.gets
     file.puts(endTime)
     file.close
 end
@@ -168,15 +170,15 @@ def decryptionTest(wantKey, wantName, oldKey, oldIv)
             file = File.open(try, "r")
             file.rewind
 
-            key = file.gets
-            iv = file.gets
+            fKey = file.gets
+            fIv = file.gets
 
             file.close
 
-            next if key.nil?
+            next if fKey.nil?
 
-            iv = base64_urlsafe_decode(iv.chomp)
-            key = base64_urlsafe_decode(key.chomp)
+            iv = base64_urlsafe_decode(fIv.chomp)
+            key = base64_urlsafe_decode(fKey.chomp)
 
             cipherTest = OpenSSL::Cipher::AES.new(256, :CBC)
             cipherTest.decrypt
