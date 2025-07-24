@@ -175,8 +175,8 @@ def decryptionTest(wantKey, wantName, oldKey, oldIv)
 
             next if key.nil?
 
-            iv = base64_urlsafe_decode(iv)
-            key = base64_urlsafe_decode(key)
+            iv = base64_urlsafe_decode(iv.chomp)
+            key = base64_urlsafe_decode(key.chomp)
 
             cipherTest = OpenSSL::Cipher::AES.new(256, :CBC)
             cipherTest.decrypt
