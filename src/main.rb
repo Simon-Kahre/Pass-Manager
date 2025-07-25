@@ -31,6 +31,7 @@ def startScreen
                 password = gets
                 if password == masterPassword
                     puts "Correct"
+                    settings.close
                     viewPasswords(key, iv)
                     break
                 else
@@ -48,12 +49,9 @@ def startScreen
             puts "Remaining time: #{remainingTime}s"
         end
     else
-        if File.exist?("settings")
-            puts "ERROR 002"
-            puts "Conflicting file information! Manual fix is required!"
-            exit(1)
-        end
-        
+        puts "Please enter a Master Password:"
+        masterPassword = gets
+
         cipher = OpenSSL::Cipher::AES.new(256, :CBC)
         cipher.encrypt
         key = cipher.random_key
@@ -66,8 +64,6 @@ def startScreen
         cipher.key = key
         cipher.iv = iv
         settings = File.new(base64_urlsafe_encode(cipher.update("settings".to_json) + cipher.final), "w")
-        puts "Please enter a Master Password:"
-        masterPassword = gets
 
         settings.puts(base64_urlsafe_encode(key))
         settings.puts(base64_urlsafe_encode(iv))
@@ -94,7 +90,6 @@ end
 def viewPasswords(key, iv)
     pass = decryptionTest(false, "pass", key, iv)
     storedPasswords = File.readlines(pass)
-    storedPasswords.push("a aa A")
 
     passwords = {}
 
@@ -107,7 +102,7 @@ def viewPasswords(key, iv)
     while true
         puts("Current sites with stored passwords:")
         passwords.each do |key, value|
-            puts(key + " " +  value[0] + " " + value[1])
+            puts(key + ": " +  value[0] + " " + value[1])
         end
 
         puts("Which one would you like to access? 'exit' to exit. 'add' to add a new password.")
@@ -158,7 +153,9 @@ def viewPasswords(key, iv)
             end
         end
 
-        break if choice == "exit"
+        if choice == "exit"
+            saveFiles(passwords, pass)
+        end
     end
 end
 
@@ -167,32 +164,36 @@ def decryptionTest(wantKey, wantName, oldKey, oldIv)
         Dir.entries(".").each do |try|
             next if try.include?(".")
 
-            file = File.open(try, "r")
-            file.rewind
+            begin
+                file = File.open(try, "r")
+                file.rewind
 
-            fKey = file.gets
-            fIv = file.gets
+                fKey = file.gets
+                fIv = file.gets
 
-            file.close
+                file.close
 
-            next if fKey.nil?
+                next if fKey.nil?
 
-            iv = base64_urlsafe_decode(fIv.chomp)
-            key = base64_urlsafe_decode(fKey.chomp)
+                iv = base64_urlsafe_decode(fIv.chomp)
+                key = base64_urlsafe_decode(fKey.chomp)
 
-            cipherTest = OpenSSL::Cipher::AES.new(256, :CBC)
-            cipherTest.decrypt
-            cipherTest.key = key
-            cipherTest.iv = iv
+                cipherTest = OpenSSL::Cipher::AES.new(256, :CBC)
+                cipherTest.decrypt
+                cipherTest.key = key
+                cipherTest.iv = iv
 
-            text = JSON.parse(cipherTest.update(base64_urlsafe_decode(try).strip) + cipherTest.final)
+                text = JSON.parse(cipherTest.update(base64_urlsafe_decode(try).strip) + cipherTest.final)
 
-            if text == "settings" || text == "pass"
-                return key, iv
-            else
-                puts "ERROR 003"
-                puts "Decryption failed!"
-                exit(1)
+                if text == "settings" || text == "pass"
+                    return key, iv
+                else
+                    puts "ERROR 003"
+                    puts "Decryption failed!"
+                    exit(1)
+                end
+            rescue
+                next
             end
         end
     else
@@ -217,6 +218,49 @@ def decryptionTest(wantKey, wantName, oldKey, oldIv)
     end
 
     return
+    puts "ERROR 002"
+    puts "Decryption failed! Manual attention needed!"
+    exit(1)
+end
+
+def saveFiles(passwords, passName)
+    pass = File.open(passName, "w")
+    pass.rewind
+
+    passwords.each do |key, value|
+        storeString = (key + " " + value[0] + " " + value[1])
+        pass.puts(storeString)
+    end
+
+    pass.close
+
+    cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    cipher.encrypt
+    key = cipher.random_key
+    iv = cipher.random_iv
+
+    Dir.entries(".").each do |file|
+        next if file.include?(".")
+
+        cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        cipher.encrypt
+        cipher.key = key
+        cipher.iv = iv
+
+        if file != passName
+            settings = File.open(file, "r+")
+            settings.rewind
+            settings.puts(base64_urlsafe_encode(key))
+            settings.puts(base64_urlsafe_encode(iv))
+            settings.close
+
+            File.rename(file, base64_urlsafe_encode(cipher.update("settings".to_json) + cipher.final))
+        else
+            File.rename(file, base64_urlsafe_encode(cipher.update("pass".to_json) + cipher.final))
+        end
+    end
+
+    exit(0)
 end
 
 def base64_urlsafe_encode(data)
