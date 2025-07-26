@@ -19,11 +19,22 @@ def startScreen
         settings.gets
         settings.gets
 
-        tryTimer = Time.parse(settings.gets)
+        cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        cipher.decrypt
+        cipher.key = key
+        cipher.iv = iv
+        puts key
+        puts iv
+
+        tryTimer = Time.parse(JSON.parse(cipher.update(base64_urlsafe_decode(settings.gets).strip) + cipher.final))
         remainingTime = tryTimer - Time.now
 
         if remainingTime <= 0
-            masterPassword = settings.gets
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.decrypt
+            cipher.key = key
+            cipher.iv = iv
+            masterPassword = JSON.parse(cipher.update(base64_urlsafe_decode(settings.gets).strip) + cipher.final)
             
             failCount = 0
             while failCount < 5
@@ -42,7 +53,7 @@ def startScreen
 
             if failCount >= 5
                 puts "You have tried too many times. You can try again in 20 minutes."
-                tryTimerReset(settings)
+                tryTimerReset(settings, key, iv)
             end
         else
             puts "Sorry. You'll have to try again later."
@@ -67,18 +78,37 @@ def startScreen
 
         settings.puts(base64_urlsafe_encode(key))
         settings.puts(base64_urlsafe_encode(iv))
-        settings.puts(Time.now)
-        settings.puts(masterPassword)
+
+        cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        cipher.encrypt
+        cipher.key = key
+        cipher.iv = iv
+        settings.puts(base64_urlsafe_encode(cipher.update(Time.now.to_json) + cipher.final))
+
+        cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        cipher.encrypt
+        cipher.key = key
+        cipher.iv = iv
+        settings.puts(base64_urlsafe_encode(cipher.update(masterPassword.to_json) + cipher.final))
         settings.close
 
         newFile.close
+
+        puts key
+        puts iv
 
         viewPasswords(key, iv)
     end
 end
 
-def tryTimerReset(file)
-    endTime = Time.now + 20*60
+def tryTimerReset(file, key, iv)
+    timeCipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    timeCipher.encrypt
+    timeCipher.key = key
+    timeCipher.iv = iv
+
+    endTime = base64_urlsafe_encode(timeCipher.update((Time.now + 20*60).to_json) + timeCipher.final)
+    #endTime = Time.now + 20*60
 
     file.rewind
     file.gets
@@ -94,7 +124,14 @@ def viewPasswords(key, iv)
     passwords = {}
 
     storedPasswords.each do |password|
-        values = password.split
+        stringCipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        stringCipher.decrypt
+        stringCipher.key = key
+        stringCipher.iv = iv
+
+        line = JSON.parse(stringCipher.update(base64_urlsafe_decode(password).strip) + stringCipher.final)
+
+        values = line.split
 
         passwords[values[0]] = values[1..2]
     end
@@ -154,7 +191,7 @@ def viewPasswords(key, iv)
         end
 
         if choice == "exit"
-            saveFiles(passwords, pass)
+            saveFiles(passwords, pass, key, iv)
         end
     end
 end
@@ -223,21 +260,28 @@ def decryptionTest(wantKey, wantName, oldKey, oldIv)
     exit(1)
 end
 
-def saveFiles(passwords, passName)
+def saveFiles(passwords, passName, oldK, oldI)
     pass = File.open(passName, "w")
     pass.rewind
-
-    passwords.each do |key, value|
-        storeString = (key + " " + value[0] + " " + value[1])
-        pass.puts(storeString)
-    end
-
-    pass.close
 
     cipher = OpenSSL::Cipher::AES.new(256, :CBC)
     cipher.encrypt
     key = cipher.random_key
     iv = cipher.random_iv
+
+    passwords.each do |vKey, value|
+        storeString = (vKey + " " + value[0] + " " + value[1])
+
+        stringCipher = OpenSSL::Cipher::AES.new(256, :CBC)
+        stringCipher.encrypt
+        stringCipher.key = key
+        stringCipher.iv = iv
+
+        encryptedString = base64_urlsafe_encode(stringCipher.update(storeString.to_json) + stringCipher.final)
+        pass.puts(encryptedString)
+    end
+
+    pass.close
 
     Dir.entries(".").each do |file|
         next if file.include?(".")
@@ -252,6 +296,44 @@ def saveFiles(passwords, passName)
             settings.rewind
             settings.puts(base64_urlsafe_encode(key))
             settings.puts(base64_urlsafe_encode(iv))
+
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.decrypt
+            cipher.key = oldK
+            cipher.iv = oldI
+
+            decodedTime = JSON.parse(cipher.update(base64_urlsafe_decode(settings.gets).strip) + cipher.final)
+
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.decrypt
+            cipher.key = oldK
+            cipher.iv = oldI
+
+            decodedMast = JSON.parse(cipher.update(base64_urlsafe_decode(settings.gets).strip) + cipher.final)
+
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.encrypt
+            cipher.key = key
+            cipher.iv = iv
+
+            settings.rewind
+            settings.gets
+            settings.gets
+
+            settings.puts(base64_urlsafe_encode(cipher.update(decodedTime.to_json) + cipher.final))
+
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.encrypt
+            cipher.key = key
+            cipher.iv = iv
+
+            settings.puts(base64_urlsafe_encode(cipher.update(decodedMast.to_json) + cipher.final))
+
+            cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+            cipher.encrypt
+            cipher.key = key
+            cipher.iv = iv
+
             settings.close
 
             File.rename(file, base64_urlsafe_encode(cipher.update("settings".to_json) + cipher.final))
